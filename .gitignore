@@ -1,0 +1,30 @@
+.env
+
+# Google OAuth tokens
+token.pickle
+token_calendar.pickle
+token_drive.pickle
+*.pickle
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+
+# PDF files
+*.pdf
+
+# Approved quotations
+Approved Quotations/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Sensitive files
+credentials.json
+token_calendar.pickle
+token_drive.pickle
+token.pickle
