@@ -24,7 +24,6 @@ __pycache__/
 *.pyc
 
 # Sensitive files
-credentials.json
 token_calendar.pickle
 token_drive.pickle
 token.pickle
