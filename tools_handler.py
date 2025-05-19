@@ -33,6 +33,9 @@ class Order(BaseModel):
     Represents a customer order.
     """
     email: Optional[str]
+    name: Optional[str]
+    address: Optional[str]
+    date: Optional[str]  # Expected in YYYY-MM-DD format
     items: List[OrderItem]
     discount: Optional[Union[str, float]]
     delivery: Optional[bool]
@@ -142,9 +145,18 @@ def generate_pdf_quote(quotation: Dict[str, Any], output_path: str = "quotation.
 
         # Order summary
         pdf.set_font("Arial", "", 12)
-        pdf.cell(0, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
+        # Use provided date or current date
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        quote_date = quotation.get("date") or current_date
+        pdf.cell(0, 10, f"Date: {quote_date}", ln=True)
+        
+        # Add customer information if available
+        if "name" in quotation and quotation["name"]:
+            pdf.cell(0, 10, f"Customer Name: {quotation['name']}", ln=True)
         if "email" in quotation and quotation["email"]:
             pdf.cell(0, 10, f"Client Email: {quotation['email']}", ln=True)
+        if "address" in quotation and quotation["address"]:
+            pdf.cell(0, 10, f"Delivery Address: {quotation['address']}", ln=True)
         pdf.ln(5)
 
         # Table header
@@ -179,14 +191,17 @@ def generate_pdf_quote(quotation: Dict[str, Any], output_path: str = "quotation.
         logger.exception("Error generating PDF quote")
         raise
 
-def save_approved_quotation(pdf_path: str) -> str:
+def save_approved_quotation(pdf_path: str, customer_name: str = "unknown") -> str:
+    """
+    Returns the path where the quotation would be saved, but doesn't actually save it.
+    This is used for reference only.
+    """
     folder = "Approved Quotations"
-    os.makedirs(folder, exist_ok=True)
     date_str = datetime.now().strftime("%Y%m%d")
-    new = os.path.join(folder, f"Quote_{date_str}.pdf")
-    with open(pdf_path, "rb") as src, open(new, "wb") as dst:
-        dst.write(src.read())
-    return new
+    # Clean customer name to be filesystem safe
+    safe_name = "".join(c for c in customer_name if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_name = safe_name.replace(' ', '_')
+    return os.path.join(folder, f"quotation_{safe_name}_{date_str}.pdf")
 
 # --- SALES via Drive ---
 
@@ -215,14 +230,13 @@ async def list_menu_items(wrapper: RunContextWrapper[Menu_item]) -> str:
 
 @function_tool
 async def add_contact(wrapper: RunContextWrapper[Contact], contact: Contact) -> str:
-    result = gdh.append_contact(contact.Name, contact.Email, contact.Phone, contact.Address)
-    return "Contact added successfully." if result else "Failed to add contact."
+    success, message = gdh.append_contact(contact.Name, contact.Email, contact.Phone, contact.Address)
+    return message
 
 @function_tool
 async def edit_contact(wrapper: RunContextWrapper[Contact], contact: Contact) -> str:
-    # You need to implement edit_contact in google_drive_handler.py
-    result = gdh.edit_contact(contact.Name, contact.Email, contact.Phone, contact.Address)
-    return "Contact edited successfully." if result else "Failed to edit contact."
+    success, message = gdh.edit_contact(contact.Name, contact.Email, contact.Phone, contact.Address)
+    return message
 
 @function_tool
 async def delete_contact(wrapper: RunContextWrapper[Contact], contact: Contact) -> str:

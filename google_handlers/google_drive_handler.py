@@ -3,6 +3,7 @@
 import os
 import pickle
 import logging
+import re
 from datetime import datetime
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -24,6 +25,7 @@ ROOT_FOLDER_NAME = "Leyla Cuisine"
 MENU_SHEET_TITLE = "Menu"
 CONTACTS_SHEET_TITLE = "Contacts"
 SALES_FOLDER_TITLE = "Sales"
+QUOTATIONS_FOLDER_TITLE = "Quotations"
 
 MENU_HEADERS = ["Item", "Category", "Price", "Description"]
 CONTACTS_HEADERS = ["Name", "Email", "Phone", "Address"]
@@ -143,10 +145,13 @@ def check_or_create_structure() -> dict:
     logger.info(f"Contacts sheet ID: {contacts}")
     sales_folder = create_folder(SALES_FOLDER_TITLE, root)
     logger.info(f"Sales folder ID: {sales_folder}")
+    quotations_folder = create_folder(QUOTATIONS_FOLDER_TITLE, root)
+    logger.info(f"Quotations folder ID: {quotations_folder}")
     return {
         "menu_sheet_id": menu,
         "contacts_sheet_id": contacts,
-        "sales_folder_id": sales_folder
+        "sales_folder_id": sales_folder,
+        "quotations_folder_id": quotations_folder
     }
 
 
@@ -218,14 +223,164 @@ def list_menu_items() -> str:
                      for n, v in menu.items())
 
 
-def append_contact(name: str, email: str, phone: str = "", address: str = "") -> bool:
-    rows = read_rows(DRIVE["contacts_sheet_id"])
-    for r in rows[1:]:
-        if len(r) > 1 and r[1].lower() == email.lower():
-            return False
-    append_row(DRIVE["contacts_sheet_id"], [name, email, phone, address])
-    return True
+def validate_email(email: str) -> tuple[bool, str]:
+    """
+    Validates email format and normalizes it.
+    Returns (is_valid, normalized_email)
+    """
+    if not email:
+        return False, ""
+    
+    # Normalize email
+    email = email.strip().lower()
+    
+    # Basic email validation regex
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(pattern, email):
+        return False, email
+    
+    return True, email
 
+def validate_phone(phone: str) -> tuple[bool, str]:
+    """
+    Validates and normalizes phone number.
+    Returns (is_valid, normalized_phone)
+    """
+    if not phone:
+        return True, ""  # Empty phone is valid
+    
+    # Remove all non-digit characters
+    digits = re.sub(r'\D', '', phone)
+    
+    # Check if it's a valid length (assuming US numbers)
+    if len(digits) not in [10, 11]:
+        return False, phone
+    
+    # Format as (XXX) XXX-XXXX
+    if len(digits) == 10:
+        return True, f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    else:
+        return True, f"+{digits[0]} ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+
+def normalize_contact_data(name: str, email: str, phone: str = "", address: str = "") -> tuple[bool, str, dict]:
+    """
+    Normalizes and validates all contact fields.
+    Returns (is_valid, error_message, normalized_data)
+    """
+    # Validate name
+    name = name.strip()
+    if not name:
+        return False, "Name cannot be empty", {}
+    
+    # Validate email
+    is_valid_email, normalized_email = validate_email(email)
+    if not is_valid_email:
+        return False, f"Invalid email format: {email}", {}
+    
+    # Validate phone
+    is_valid_phone, normalized_phone = validate_phone(phone)
+    if not is_valid_phone:
+        return False, f"Invalid phone number format: {phone}", {}
+    
+    # Normalize address
+    address = address.strip()
+    
+    return True, "", {
+        "name": name,
+        "email": normalized_email,
+        "phone": normalized_phone,
+        "address": address
+    }
+
+def append_contact(name: str, email: str, phone: str = "", address: str = "") -> tuple[bool, str]:
+    """
+    Adds a new contact with validation.
+    Returns (success, message)
+    """
+    try:
+        # Validate and normalize data
+        is_valid, error_msg, data = normalize_contact_data(name, email, phone, address)
+        if not is_valid:
+            logger.warning(f"Contact validation failed: {error_msg}")
+            return False, error_msg
+        
+        # Check for existing contact
+        rows = read_rows(DRIVE["contacts_sheet_id"])
+        for r in rows[1:]:
+            if len(r) > 1:
+                existing_email = r[1].strip().lower()
+                if existing_email == data["email"]:
+                    logger.info(f"Contact with email {data['email']} already exists")
+                    return False, f"Contact with email {data['email']} already exists"
+                
+                # Check for similar names (case-insensitive)
+                existing_name = r[0].strip().lower()
+                if existing_name == data["name"].lower():
+                    logger.info(f"Contact with name {data['name']} already exists")
+                    return False, f"Contact with name {data['name']} already exists"
+        
+        # Add the contact
+        append_row(DRIVE["contacts_sheet_id"], [
+            data["name"],
+            data["email"],
+            data["phone"],
+            data["address"]
+        ])
+        logger.info(f"Successfully added contact: {data['name']} ({data['email']})")
+        return True, f"Contact {data['name']} added successfully"
+        
+    except Exception as e:
+        logger.exception("Error adding contact")
+        return False, f"Failed to add contact: {str(e)}"
+
+def edit_contact(name: str, email: str, phone: str = "", address: str = "") -> tuple[bool, str]:
+    """
+    Edit a contact by email with validation.
+    Returns (success, message)
+    """
+    try:
+        # Validate and normalize data
+        is_valid, error_msg, data = normalize_contact_data(name, email, phone, address)
+        if not is_valid:
+            logger.warning(f"Contact validation failed: {error_msg}")
+            return False, error_msg
+        
+        rows = read_rows(DRIVE["contacts_sheet_id"])
+        svc = get_sheets_service()
+        sid = DRIVE["contacts_sheet_id"]
+        meta = svc.spreadsheets().get(spreadsheetId=sid, fields="sheets.properties").execute()
+        sheet_id = next(s["properties"]["sheetId"]
+                        for s in meta["sheets"]
+                        if s["properties"]["title"] == "Sheet1")
+        
+        found = False
+        for idx, r in enumerate(rows[1:], start=2):
+            if len(r) > 1 and r[1].strip().lower() == data["email"].lower():
+                # Update the row
+                svc.spreadsheets().values().update(
+                    spreadsheetId=sid,
+                    range=f"Sheet1!A{idx}:D{idx}",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [[
+                        data["name"],
+                        data["email"],
+                        data["phone"],
+                        data["address"]
+                    ]]}
+                ).execute()
+                found = True
+                logger.info(f"Successfully updated contact: {data['name']} ({data['email']})")
+                break
+        
+        if not found:
+            logger.warning(f"Contact with email {data['email']} not found")
+            return False, f"Contact with email {data['email']} not found"
+        
+        return True, f"Contact {data['name']} updated successfully"
+        
+    except Exception as e:
+        logger.exception("Error editing contact")
+        return False, f"Failed to edit contact: {str(e)}"
 
 def list_contacts() -> str:
     rows = read_rows(DRIVE["contacts_sheet_id"])
@@ -236,30 +391,6 @@ def list_contacts() -> str:
         name, email, phone, address = (r + ["", "", "", ""])[:4]
         contacts.append(f"Name: {name}, Email: {email}, Phone: {phone}, Address: {address}")
     return "\n".join(contacts)
-
-
-def edit_contact(name: str, email: str, phone: str = "", address: str = "") -> bool:
-    """
-    Edit a contact by email. If found, update the row with new values.
-    """
-    rows = read_rows(DRIVE["contacts_sheet_id"])
-    svc = get_sheets_service()
-    sid = DRIVE["contacts_sheet_id"]
-    meta = svc.spreadsheets().get(spreadsheetId=sid, fields="sheets.properties").execute()
-    sheet_id = next(s["properties"]["sheetId"]
-                    for s in meta["sheets"]
-                    if s["properties"]["title"] == "Sheet1")
-    for idx, r in enumerate(rows[1:], start=2):
-        if len(r) > 1 and r[1].lower() == email.lower():
-            # Update the row
-            svc.spreadsheets().values().update(
-                spreadsheetId=sid,
-                range=f"Sheet1!A{idx}:D{idx}",
-                valueInputOption="USER_ENTERED",
-                body={"values": [[name, email, phone, address]]}
-            ).execute()
-            return True
-    return False
 
 
 def delete_contact(name: str = None, email: str = None, phone: str = None) -> bool:
@@ -325,3 +456,35 @@ def record_sales(quotation: dict) -> bool:
         else:
             append_row(sid, [name, qty, tot])
     return True
+
+
+def save_quotation_to_drive(pdf_path: str, customer_name: str) -> str:
+    """
+    Saves a quotation PDF to Google Drive in the Quotations folder.
+    Returns the file ID of the uploaded PDF.
+    """
+    try:
+        # Clean customer name for filename
+        safe_name = "".join(c for c in customer_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_name = safe_name.replace(' ', '_')
+        date_str = datetime.now().strftime("%Y%m%d")
+        filename = f"quotation_{safe_name}_{date_str}.pdf"
+        
+        # Create file metadata
+        file_metadata = {
+            'name': filename,
+            'parents': [DRIVE["quotations_folder_id"]]
+        }
+        
+        # Upload the file
+        media = get_drive_service().files().create(
+            body=file_metadata,
+            media_body=pdf_path,
+            fields='id'
+        ).execute()
+        
+        logger.info(f"Quotation saved to Drive with ID: {media.get('id')}")
+        return media.get('id')
+    except Exception as e:
+        logger.exception("Error saving quotation to Drive")
+        raise

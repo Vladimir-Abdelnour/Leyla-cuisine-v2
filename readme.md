@@ -1,128 +1,134 @@
-# Leyla Cuisine Quotation Generator
+# Leyla Cuisine Bot
 
-## Overview
-
-Leyla Cuisine Quotation Generator is an AI-powered Telegram bot that manages menu items, contacts, and generates quotations for catering orders. It integrates with Google Drive, Sheets, Calendar, and Gmail for seamless business operations.
-
----
-
-## Features
-
-- **Order Parsing:** Understands natural language orders and generates structured quotations.
-- **Menu Management:** Add, edit, delete, and list menu items via Google Sheets.
-- **Contact Management:** Manage customer contacts in Google Sheets.
-- **Quotation Generation:** Calculates totals, applies discounts/tax, and generates PDF quotations.
-- **Sales Recording:** Logs sales data to Google Sheets.
-- **Email Integration:** Sends quotations as PDF attachments via Gmail.
-- **Google Calendar:** (Optional) Schedule events for orders.
-
----
-
-## File Structure
-
-```
-Leyla-cuisine/
-├── bot.py                  # Main Telegram bot logic
-├── tools_handler.py        # Business logic and model definitions
-├── agents/                 # AI agent definitions
-├── google_handlers/        # Google API integrations
-│   ├── google_drive_handler.py
-│   ├── google_calendar_handler.py
-│   └── email_handler.py
-├── data/                   # CSV data files (menu, sales, contacts)
-├── requirements.txt        # Python dependencies
-├── .env                    # Environment variables (not committed)
-├── .gitignore
-└── README.md
-```
-
----
+A Telegram bot for Leyla Cuisine that handles quotation generation, menu management, contact management, and delivery scheduling.
 
 ## Setup Instructions
 
-### 1. Clone the Repository
+### 1. Prerequisites
+- Python 3.8 or higher
+- A Telegram account
+- A Google account with access to:
+  - Google Drive
+  - Google Calendar
+  - Gmail
 
-```sh
-git clone <repo-url>
-cd Leyla-cuisine
+### 2. Initial Setup
+
+1. Clone this repository:
+```bash
+git clone https://github.com/yourusername/leyla-cuisine-bot.git
+cd leyla-cuisine-bot
 ```
 
-### 2. Create and Activate a Virtual Environment
-
-```sh
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+2. Create and activate a virtual environment:
+```bash
+python -m venv .venv
+# On Windows:
+.venv\Scripts\activate
+# On Unix/MacOS:
+source .venv/bin/activate
 ```
 
-### 3. Install Dependencies
-
-```sh
+3. Install dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
-### 4. Set Up Environment Variables
+### 3. Configuration
 
-Create a `.env` file in the project root:
+1. Create a `.env` file in the project root with the following variables:
+```env
+# Telegram Bot Configuration
+TELEGRAM_API_KEY=your_telegram_bot_token_here
 
+# Google API Configuration
+GOOGLE_CREDENTIALS_FILE=credentials.json
+GOOGLE_EMAIL=your_google_email@gmail.com
+
+# Email Configuration
+DEFAULT_SENDER_EMAIL=your_google_email@gmail.com
+DEFAULT_RECIPIENT_EMAIL=default_recipient@example.com
 ```
-TELEGRAM_API_KEY=your-telegram-bot-api-key
-OPENAI_API_KEY=your-openai-api-key
-```
 
-### 5. Google API Credentials
+2. Set up Google API credentials:
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Create a new project or select an existing one
+   - Enable the following APIs:
+     - Google Drive API
+     - Google Calendar API
+     - Gmail API
+   - Create OAuth 2.0 credentials
+   - Download the credentials and save as `credentials.json` in the project root
 
-- Download `credentials.json` from your Google Cloud Console (OAuth2 client).
-- Place it in the project root.
+3. Set up Telegram Bot:
+   - Message [@BotFather](https://t.me/botfather) on Telegram
+   - Create a new bot using `/newbot`
+   - Copy the API token and add it to your `.env` file
 
-### 6. Run the Bot
+### 4. Running the Bot
 
-```sh
+1. Start the bot:
+```bash
 python bot.py
 ```
 
----
+2. The first time you run the bot, it will:
+   - Open a browser window for Google OAuth authentication
+   - Create necessary Google Drive folders and sheets
+   - Generate token files for Google API access
 
-## Usage
+### 5. Deployment
 
-- Interact with the Telegram bot using `/Greet` or by sending orders, menu, or contact management commands.
-- The bot will guide you through order confirmation and send quotations via email.
+#### Local Deployment
+For local deployment, simply run the bot as described above.
 
----
+#### Server Deployment
+For server deployment:
 
-## Security
+1. Set up a server with Python 3.8+
+2. Clone the repository
+3. Follow the setup instructions above
+4. Use a process manager like `systemd` or `supervisor` to keep the bot running
+5. Set up SSL certificates if needed
 
-- **Never commit `.env` or `credentials.json` to version control.**
-- All sensitive keys are loaded from environment variables.
+Example systemd service file:
+```ini
+[Unit]
+Description=Leyla Cuisine Bot
+After=network.target
 
----
+[Service]
+Type=simple
+User=your_user
+WorkingDirectory=/path/to/leyla-cuisine-bot
+Environment=PATH=/path/to/leyla-cuisine-bot/.venv/bin
+ExecStart=/path/to/leyla-cuisine-bot/.venv/bin/python bot.py
+Restart=always
 
-## Testing
+[Install]
+WantedBy=multi-user.target
+```
 
-- Add unit tests for all business logic in `tools_handler.py` and Google handlers.
-- Use `pytest` for running tests.
+### 6. Security Notes
 
----
+- Never commit the following files to version control:
+  - `.env`
+  - `credentials.json`
+  - `*.pickle` files
+  - Any PDF files
+- Keep your API keys and credentials secure
+- Regularly update dependencies for security patches
 
-## Deployment
+## Features
 
-- Use a process manager (e.g., `systemd`, `pm2`, or Docker) for production deployment.
-- Ensure all environment variables are set in your deployment environment.
+- Automated quotation generation
+- Menu management
+- Contact management
+- Delivery scheduling
+- Google Drive integration
+- Email notifications
+- Multi-threaded message handling
 
----
+## Support
 
-## Troubleshooting
-
-- Ensure all Google API tokens are valid and have the correct scopes.
-- Check logs (`logging.INFO`) for detailed error messages.
-
----
-
-## License
-
-MIT License
-
----
-
-## Contact
-
-For support, contact Vladimir Abdelnou at vabdelno@asu.edu.
+For support, please contact [your contact information].

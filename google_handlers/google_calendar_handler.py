@@ -1,6 +1,8 @@
 import os
 import pickle
 import logging
+from datetime import datetime, timezone
+import pytz
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
@@ -8,14 +10,22 @@ from google.auth.transport.requests import Request
 # The Calendar API scope.
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+# Get the project root directory
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CREDENTIALS_FILE = os.path.join(PROJECT_ROOT, 'credentials.json')
+TOKEN_FILE = os.path.join(PROJECT_ROOT, 'token_calendar.pickle')
+
+# Timezone settings
+TIMEZONE = 'America/Phoenix'  # Mountain Time
+mt_tz = pytz.timezone(TIMEZONE)
+
 logger = logging.getLogger(__name__)
 
 def get_credentials():
     """Obtain valid user credentials from storage or run OAuth2 flow."""
     creds = None
-    token_file = 'token_calendar.pickle'
-    if os.path.exists(token_file):
-        with open(token_file, 'rb') as token:
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, 'rb') as token:
             creds = pickle.load(token)
         # If stored credentials don't include the required scopes, force a new login.
         if not set(SCOPES).issubset(set(creds.scopes)):
@@ -24,10 +34,16 @@ def get_credentials():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
+            if not os.path.exists(CREDENTIALS_FILE):
+                raise FileNotFoundError(
+                    f"Credentials file not found at {CREDENTIALS_FILE}. "
+                    "Please download your credentials.json from Google Cloud Console "
+                    "and place it in the project root directory."
+                )
             # Use the login_hint to enforce using vladimirabdelnour00@gmail.com
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
             creds = flow.run_local_server(port=0, login_hint="vladimirabdelnour00@gmail.com")
-        with open(token_file, 'wb') as token:
+        with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
     return creds
 
@@ -57,6 +73,33 @@ def delete_event(event_id, calendar_id='primary'):
     print("Event deleted")
     return True
 
+def validate_datetime(dt_str: str) -> str:
+    """
+    Validates and formats datetime string to ensure it's in the future and properly formatted.
+    Returns ISO format string in Mountain Time.
+    """
+    try:
+        # Parse the input datetime
+        dt = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
+        
+        # If year is not 2025, update it
+        if dt.year != 2025:
+            dt = dt.replace(year=2025)
+        
+        # Localize to Mountain Time
+        dt = mt_tz.localize(dt)
+        
+        # Check if the date is in the future
+        now = datetime.now(mt_tz)
+        if dt < now:
+            raise ValueError("Cannot schedule events in the past")
+        
+        # Return ISO format string
+        return dt.isoformat()
+    except ValueError as e:
+        logger.error(f"Invalid datetime format or past date: {e}")
+        raise
+
 def create_delivery_event(
     summary: str,
     address: str,
@@ -70,17 +113,21 @@ def create_delivery_event(
     Create a calendar event for a delivery.
     """
     try:
+        # Validate and format datetimes
+        start_dt = validate_datetime(start_datetime)
+        end_dt = validate_datetime(end_datetime)
+        
         event_body = {
             'summary': summary,
             'location': address,
             'description': description,
             'start': {
-                'dateTime': start_datetime,
-                'timeZone': 'America/New_York',
+                'dateTime': start_dt,
+                'timeZone': TIMEZONE,
             },
             'end': {
-                'dateTime': end_datetime,
-                'timeZone': 'America/New_York',
+                'dateTime': end_dt,
+                'timeZone': TIMEZONE,
             },
             'attendees': attendees or [],
             'reminders': {'useDefault': True},
@@ -108,9 +155,11 @@ def edit_delivery_event(
         if address: event_body['location'] = address
         if description: event_body['description'] = description
         if start_datetime:
-            event_body['start'] = {'dateTime': start_datetime, 'timeZone': 'America/New_York'}
+            start_dt = validate_datetime(start_datetime)
+            event_body['start'] = {'dateTime': start_dt, 'timeZone': TIMEZONE}
         if end_datetime:
-            event_body['end'] = {'dateTime': end_datetime, 'timeZone': 'America/New_York'}
+            end_dt = validate_datetime(end_datetime)
+            event_body['end'] = {'dateTime': end_dt, 'timeZone': TIMEZONE}
         return update_event(event_id, event_body, calendar_id)
     except Exception as e:
         logger.exception("Error editing delivery event")
