@@ -42,7 +42,7 @@ def get_credentials():
                 )
             # Use the login_hint to enforce using vladimirabdelnour00@gmail.com
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0, login_hint="vladimirabdelnour00@gmail.com")
+            creds = flow.run_console()
         with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
     return creds
