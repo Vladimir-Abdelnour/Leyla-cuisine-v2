@@ -1,6 +1,6 @@
 """
 Google OAuth Setup Handler for Leyla Cuisine Bot.
-Handles the OAuth flow through Telegram messages.
+Handles the OAuth flow through a web interface.
 """
 
 import os
@@ -10,7 +10,7 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 import pickle
-from config import GOOGLE_CREDENTIALS_FILE, TOKEN_FILES
+from config import TOKEN_FILES
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +21,22 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
+# Your Google Cloud Project OAuth 2.0 Client ID and Secret
+CLIENT_CONFIG = {
+    "web": {
+        "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+        "client_secret": os.getenv('GOOGLE_CLIENT_SECRET'),
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": [os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8080/oauth2callback')]
+    }
+}
+
 def check_google_setup():
     """
     Checks if Google credentials are properly set up.
     Returns (bool, str) tuple: (is_setup, message)
     """
-    # Check if credentials file exists
-    if not os.path.exists(GOOGLE_CREDENTIALS_FILE):
-        return False, "Google credentials file not found. Please contact the administrator."
-
     # Check if any token files exist
     has_tokens = any(os.path.exists(token_file) for token_file in TOKEN_FILES.values())
     if not has_tokens:
@@ -56,10 +63,10 @@ def generate_oauth_url():
     Returns the authorization URL.
     """
     try:
-        flow = Flow.from_client_secrets_file(
-            GOOGLE_CREDENTIALS_FILE,
+        flow = Flow.from_client_config(
+            CLIENT_CONFIG,
             scopes=SCOPES,
-            redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # Out-of-band flow
+            redirect_uri=CLIENT_CONFIG['web']['redirect_uris'][0]
         )
         
         # Generate URL for request
@@ -80,10 +87,10 @@ def handle_oauth_callback(auth_code):
     Saves the credentials to token files.
     """
     try:
-        flow = Flow.from_client_secrets_file(
-            GOOGLE_CREDENTIALS_FILE,
+        flow = Flow.from_client_config(
+            CLIENT_CONFIG,
             scopes=SCOPES,
-            redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+            redirect_uri=CLIENT_CONFIG['web']['redirect_uris'][0]
         )
         
         # Exchange auth code for credentials

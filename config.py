@@ -14,7 +14,9 @@ load_dotenv()
 TELEGRAM_API_KEY = os.getenv('TELEGRAM_API_KEY')
 
 # Google API Configuration
-GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8080/oauth2callback')
 GOOGLE_EMAIL = os.getenv('GOOGLE_EMAIL')
 
 # Email Configuration
@@ -49,7 +51,8 @@ def validate_config():
     """
     required_vars = [
         ('TELEGRAM_API_KEY', TELEGRAM_API_KEY),
-        ('GOOGLE_CREDENTIALS_FILE', GOOGLE_CREDENTIALS_FILE),
+        ('GOOGLE_CLIENT_ID', GOOGLE_CLIENT_ID),
+        ('GOOGLE_CLIENT_SECRET', GOOGLE_CLIENT_SECRET),
         ('GOOGLE_EMAIL', GOOGLE_EMAIL),
         ('DEFAULT_SENDER_EMAIL', DEFAULT_SENDER_EMAIL)
     ]

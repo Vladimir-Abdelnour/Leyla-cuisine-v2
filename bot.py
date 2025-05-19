@@ -629,7 +629,7 @@ triage_agent = Agent(
 @bot.message_handler(commands=['setup_google'])
 def setup_google(message):
     """
-    Initiates the Google OAuth setup process.
+    Initiates the Google OAuth setup process through a web interface.
     """
     try:
         # Check if already set up
@@ -647,8 +647,9 @@ def setup_google(message):
             "1. Click the link below to authorize the bot\n"
             "2. Sign in with your Google account\n"
             "3. Grant the requested permissions\n"
-            "4. Copy the authorization code\n"
-            "5. Send the code back to me using /auth_code <code>\n\n"
+            "4. After authorization, you'll be redirected to a page\n"
+            "5. Copy the authorization code from the page\n"
+            "6. Send the code back to me using /auth_code <code>\n\n"
             f"Authorization link: {auth_url}"
         )
         bot.reply_to(message, instructions)
