@@ -1,0 +1,34 @@
+# Core Bot Dependencies
+python-dotenv==1.0.1
+pyTelegramBotAPI==4.16.1
+openai==1.66.3
+openai-agents==0.0.4
+
+# Google API integration
+google-api-python-client==2.126.0
+google-auth==2.29.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+googleapis-common-protos==1.69.1
+
+# Web Server for OAuth
+flask==3.0.2
+
+# PDF processing
+fpdf2==2.7.8
+
+# Data processing
+pandas==2.2.3
+
+# HTTP requests
+requests==2.32.3
+
+# Date/time handling
+python-dateutil==2.9.0.post0
+
+# Type hints support
+typing_extensions==4.12.2
+
+# Logging and monitoring
+opentelemetry-api==1.31.0
+opentelemetry-sdk==1.31.0 

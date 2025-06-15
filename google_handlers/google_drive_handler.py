@@ -1,15 +1,18 @@
-# google_handlers/google_drive_handler.py
+"""
+Google Drive Handler for Leyla Cuisine Bot.
+Handles Google Drive operations including menu management, contacts, and file storage.
+"""
 
 import os
 import pickle
 import logging
 import re
 from datetime import datetime
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
+from config import TOKEN_FILES
 
 # Scopes
 SCOPES = [

@@ -274,7 +274,7 @@ def initialize_google_services():
     try:
         import google_handlers.google_drive_handler as gdh_module
         gdh = gdh_module
-        DRIVE_IDS = gdh.DRIVE
+        DRIVE_IDS = gdh.get_drive_structure()  # Use the lazy loading function
         # Attempt to load menu from Google Drive
         try:
             menu = gdh.load_menu()
@@ -294,23 +294,6 @@ def initialize_google_services():
         menu = {}
         menu_items_str = ""
         return False
-
-    # Check if Google services are already set up during startup
-    try:
-        from google_handlers.oauth_setup import check_google_setup
-        is_setup, setup_message = check_google_setup()
-        if is_setup:
-            logger.info("Google authentication detected. Initializing Google services...")
-            if initialize_google_services():
-                logger.info("Google services initialized successfully.")
-            else:
-                logger.warning("Google services partially initialized.")
-        else:
-            logger.info(f"Google services not initialized: {setup_message}")
-            logger.info("Bot will prompt users to authenticate when Google features are needed.")
-    except Exception as e:
-        logger.error(f"Error checking Google setup during startup: {e}")
-        logger.info("Bot will start without Google services. Users can authenticate later.")
 
 # ==============================
 # User State and Agent Setup

@@ -1,15 +1,21 @@
+"""
+Email Handler for Leyla Cuisine Bot.
+Handles sending quotations via Gmail API.
+"""
+
 import os
-import base64
 import pickle
 import logging
-from email.mime.multipart import MIMEMultipart
+import base64
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
+from googleapiclient.discovery import build
+from config import TOKEN_FILES, DEFAULT_SENDER_EMAIL
+
+logger = logging.getLogger(__name__)
 
 # The Gmail API scope for sending messages.
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
@@ -17,8 +23,6 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 # Filenames for OAuth2 credentials and token
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_FILE = 'token.pickle'
-
-logger = logging.getLogger(__name__)
 
 def get_gmail_service():
     """

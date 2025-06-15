@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,40 +15,47 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Environment variables
+# Virtual Environment
+venv/
+venv_new/
+env/
+ENV/
+
+# Environment Variables
 .env
+.env.local
+.env.production
 
-# IDE specific files
-.idea/
+# Google API Credentials and Tokens
+credentials.json
+token*.pickle
+token_*.pickle
+
+# Generated Files
+*.pdf
+quotations/
+approved_quotations/
+
+# Logs
+*.log
+logs/
+
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
 
-# Google credentials
-credentials.json
-token.json
+# OS
+.DS_Store
+Thumbs.db
 
-# Google OAuth tokens
-token.pickle
-token_calendar.pickle
-token_drive.pickle
-*.pickle
-
-# Python
-__pycache__/
-*.pyc
-
-# PDF files
-*.pdf
-
-# Approved quotations
-Approved Quotations/
-
-# Sensitive files
-token_calendar.pickle
-token_drive.pickle
-token.pickle
+# Temporary files
+*.tmp
+*.temp

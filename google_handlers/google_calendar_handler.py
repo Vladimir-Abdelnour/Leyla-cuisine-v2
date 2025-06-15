@@ -1,11 +1,17 @@
+"""
+Google Calendar Handler for Leyla Cuisine Bot.
+Handles calendar operations for delivery scheduling.
+"""
+
 import os
 import pickle
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pytz
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
+from googleapiclient.discovery import build
+from config import TOKEN_FILES, CALENDAR_CONFIG
 
 # The Calendar API scope.
 SCOPES = ['https://www.googleapis.com/auth/calendar']
