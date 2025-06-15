@@ -45,13 +45,9 @@ def get_gmail_service():
 
         # If there are still no valid creds, run the OAuth flow
         if not creds:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES
+            raise RuntimeError(
+                "Google authentication required. Please use /setup_google in the Telegram bot to set up Google integration."
             )
-            creds = flow.run_console()
-            # Save the new credentials for next time
-            with open(TOKEN_FILE, 'wb') as token_file:
-                pickle.dump(creds, token_file)
 
     # Build the Gmail service
     return build('gmail', 'v1', credentials=creds)

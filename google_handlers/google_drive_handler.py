@@ -51,10 +51,9 @@ def get_credentials():
                     os.remove(TOKEN_FILE)
                     creds = None
             if not creds:
-                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-                creds = flow.run_console()
-                with open(TOKEN_FILE, "wb") as f:
-                    pickle.dump(creds, f)
+                raise RuntimeError(
+                    "Google authentication required. Please use /setup_google in the Telegram bot to set up Google integration."
+                )
         return creds
     except Exception as e:
         logger.exception("Error getting Google credentials")
@@ -155,7 +154,18 @@ def check_or_create_structure() -> dict:
     }
 
 
-DRIVE = check_or_create_structure()
+# Global variable to store drive structure (initialized lazily)
+DRIVE = None
+
+def get_drive_structure():
+    """
+    Get the drive structure, initializing it if necessary.
+    This allows lazy loading of the drive structure only when needed.
+    """
+    global DRIVE
+    if DRIVE is None:
+        DRIVE = check_or_create_structure()
+    return DRIVE
 
 
 def load_menu() -> dict:
@@ -164,7 +174,8 @@ def load_menu() -> dict:
     Returns a dictionary of menu items.
     """
     try:
-        rows = read_rows(DRIVE["menu_sheet_id"])
+        drive_structure = get_drive_structure()
+        rows = read_rows(drive_structure["menu_sheet_id"])
         menu = {}
         for r in rows[1:]:
             if not r: continue
@@ -177,16 +188,18 @@ def load_menu() -> dict:
 
 
 def add_menu_item(item) -> str:
-    append_row(DRIVE["menu_sheet_id"],
+    drive_structure = get_drive_structure()
+    append_row(drive_structure["menu_sheet_id"],
                [item.Item, item.Category, str(item.Price), item.Description or ""])
     return f"Added {item.Item}."
 
 
 def delete_menu_item(item_name: str) -> str:
-    rows = read_rows(DRIVE["menu_sheet_id"])
+    drive_structure = get_drive_structure()
+    rows = read_rows(drive_structure["menu_sheet_id"])
     for idx, r in enumerate(rows[1:], start=2):
         if r and r[0] == item_name:
-            sid = DRIVE["menu_sheet_id"]
+            sid = drive_structure["menu_sheet_id"]
             meta = get_sheets_service().spreadsheets().get(
                 spreadsheetId=sid, fields="sheets.properties"
             ).execute()
@@ -304,8 +317,9 @@ def append_contact(name: str, email: str, phone: str = "", address: str = "") ->
             logger.warning(f"Contact validation failed: {error_msg}")
             return False, error_msg
         
+        drive_structure = get_drive_structure()
         # Check for existing contact
-        rows = read_rows(DRIVE["contacts_sheet_id"])
+        rows = read_rows(drive_structure["contacts_sheet_id"])
         for r in rows[1:]:
             if len(r) > 1:
                 existing_email = r[1].strip().lower()
@@ -320,7 +334,7 @@ def append_contact(name: str, email: str, phone: str = "", address: str = "") ->
                     return False, f"Contact with name {data['name']} already exists"
         
         # Add the contact
-        append_row(DRIVE["contacts_sheet_id"], [
+        append_row(drive_structure["contacts_sheet_id"], [
             data["name"],
             data["email"],
             data["phone"],
@@ -345,9 +359,10 @@ def edit_contact(name: str, email: str, phone: str = "", address: str = "") -> t
             logger.warning(f"Contact validation failed: {error_msg}")
             return False, error_msg
         
-        rows = read_rows(DRIVE["contacts_sheet_id"])
+        drive_structure = get_drive_structure()
+        rows = read_rows(drive_structure["contacts_sheet_id"])
         svc = get_sheets_service()
-        sid = DRIVE["contacts_sheet_id"]
+        sid = drive_structure["contacts_sheet_id"]
         meta = svc.spreadsheets().get(spreadsheetId=sid, fields="sheets.properties").execute()
         sheet_id = next(s["properties"]["sheetId"]
                         for s in meta["sheets"]
@@ -383,7 +398,8 @@ def edit_contact(name: str, email: str, phone: str = "", address: str = "") -> t
         return False, f"Failed to edit contact: {str(e)}"
 
 def list_contacts() -> str:
-    rows = read_rows(DRIVE["contacts_sheet_id"])
+    drive_structure = get_drive_structure()
+    rows = read_rows(drive_structure["contacts_sheet_id"])
     if len(rows) <= 1:
         return "No contacts found."
     contacts = []
@@ -395,7 +411,8 @@ def list_contacts() -> str:
 
 def delete_contact(name: str = None, email: str = None, phone: str = None) -> bool:
     """Delete a contact by name, email, or phone."""
-    sheet_id = DRIVE["contacts_sheet_id"]
+    drive_structure = get_drive_structure()
+    sheet_id = drive_structure["contacts_sheet_id"]
     rows = read_rows(sheet_id)
     found = False
     for idx, row in enumerate(rows[1:], start=2):  # skip header
@@ -431,10 +448,11 @@ def delete_contact(name: str = None, email: str = None, phone: str = None) -> bo
 
 
 def record_sales(quotation: dict) -> bool:
+    drive_structure = get_drive_structure()
     now = datetime.now()
     title = now.strftime("Sales_%Y_%m")
-    sid = find_file(title, "application/vnd.google-apps.spreadsheet", DRIVE["sales_folder_id"]) \
-          or create_sheet(title, DRIVE["sales_folder_id"], MONTHLY_SALES_HEADERS)
+    sid = find_file(title, "application/vnd.google-apps.spreadsheet", drive_structure["sales_folder_id"]) \
+          or create_sheet(title, drive_structure["sales_folder_id"], MONTHLY_SALES_HEADERS)
     rows = read_rows(sid)
     svc = get_sheets_service()
     meta = svc.spreadsheets().get(spreadsheetId=sid, fields="sheets.properties").execute()
@@ -464,6 +482,7 @@ def save_quotation_to_drive(pdf_path: str, customer_name: str) -> str:
     Returns the file ID of the uploaded PDF.
     """
     try:
+        drive_structure = get_drive_structure()
         # Clean customer name for filename
         safe_name = "".join(c for c in customer_name if c.isalnum() or c in (' ', '-', '_')).strip()
         safe_name = safe_name.replace(' ', '_')
@@ -473,7 +492,7 @@ def save_quotation_to_drive(pdf_path: str, customer_name: str) -> str:
         # Create file metadata
         file_metadata = {
             'name': filename,
-            'parents': [DRIVE["quotations_folder_id"]]
+            'parents': [drive_structure["quotations_folder_id"]]
         }
         
         # Upload the file

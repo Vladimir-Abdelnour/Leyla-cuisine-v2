@@ -28,23 +28,40 @@ def get_credentials():
         with open(TOKEN_FILE, 'rb') as token:
             creds = pickle.load(token)
         # If stored credentials don't include the required scopes, force a new login.
-        if not set(SCOPES).issubset(set(creds.scopes)):
-            creds = None
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if not os.path.exists(CREDENTIALS_FILE):
-                raise FileNotFoundError(
-                    f"Credentials file not found at {CREDENTIALS_FILE}. "
-                    "Please download your credentials.json from Google Cloud Console "
-                    "and place it in the project root directory."
-                )
-            # Use the login_hint to enforce using vladimirabdelnour00@gmail.com
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_console()
-        with open(TOKEN_FILE, 'wb') as token:
-            pickle.dump(creds, token)
+        if creds and not set(SCOPES).issubset(set(creds.scopes)):
+            creds = None # Invalidate creds to force re-auth via /setup_google
+            try:
+                os.remove(TOKEN_FILE) # Remove the old token file with insufficient scopes
+                logger.info(f"Removed token file {TOKEN_FILE} due to insufficient scopes.")
+            except OSError as e:
+                logger.error(f"Error removing token file {TOKEN_FILE}: {e}")
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    # Save the refreshed credentials
+                    with open(TOKEN_FILE, 'wb') as token:
+                        pickle.dump(creds, token)
+                    logger.info(f"Refreshed and saved credentials to {TOKEN_FILE}")
+                except Exception as e: # Catch broader exceptions during refresh, e.g., RefreshError
+                    logger.error(f"Failed to refresh token: {e}. Deleting problematic token file {TOKEN_FILE}.")
+                    if os.path.exists(TOKEN_FILE):
+                        try:
+                            os.remove(TOKEN_FILE)
+                        except OSError as e_remove:
+                            logger.error(f"Error removing token file {TOKEN_FILE}: {e_remove}")
+                    creds = None # Ensure creds is None if refresh fails
+            else:
+                creds = None # Credentials are not valid and cannot be refreshed
+
+    if not creds:
+        # If credentials are still not available or valid,
+        # direct the user to the bot's setup command.
+        raise RuntimeError(
+            "Google Calendar authentication required or token is invalid/expired. "
+            "Please use the /setup_google command in the Telegram bot to authorize."
+        )
     return creds
 
 def get_calendar_service():

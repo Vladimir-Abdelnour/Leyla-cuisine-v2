@@ -52,7 +52,10 @@ from config import (
     TOKEN_FILES, DRIVE_CONFIG, CALENDAR_CONFIG,
     validate_config
 )
-from google_handlers.oauth_setup import check_google_setup, generate_oauth_url, handle_oauth_callback
+from google_handlers.oauth_setup import check_google_setup, generate_oauth_url, generate_oauth_url_with_state, handle_oauth_callback
+import queue
+import secrets
+from flask import Flask, request, render_template_string, redirect, url_for
 
 # ==============================
 # Global State and Bot Setup
@@ -71,6 +74,189 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ==============================
+# Flask Web Server for OAuth Callbacks
+# ==============================
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# OAuth state management
+oauth_states = {}  # state -> user_id mapping
+oauth_callback_queue = queue.Queue()  # Queue for (user_id, code) pairs
+
+# HTML template for OAuth success/error pages
+SUCCESS_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Successful</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        .success { color: green; }
+        .container { max-width: 500px; margin: 0 auto; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="success">✅ Authentication Successful!</h1>
+        <p>Your Google account has been successfully linked to the Leyla Cuisine bot.</p>
+        <p>You can now close this window and return to Telegram to use all features.</p>
+        <p><strong>The bot will notify you shortly in Telegram.</strong></p>
+    </div>
+</body>
+</html>
+"""
+
+ERROR_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Error</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        .error { color: red; }
+        .container { max-width: 500px; margin: 0 auto; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="error">❌ Authentication Error</h1>
+        <p>{{ error_message }}</p>
+        <p>Please return to Telegram and try the authentication process again.</p>
+        <p>You can use the /setup_google command to get a new authorization link.</p>
+    </div>
+</body>
+</html>
+"""
+
+@app.route('/oauth2callback')
+def oauth_callback():
+    """Handle OAuth2 callback from Google"""
+    try:
+        # Get parameters from the callback
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        
+        if error:
+            logger.error(f"OAuth error: {error}")
+            return render_template_string(ERROR_TEMPLATE, error_message=f"Google returned an error: {error}")
+        
+        if not code or not state:
+            logger.error("Missing code or state in OAuth callback")
+            return render_template_string(ERROR_TEMPLATE, error_message="Missing authorization code or state parameter.")
+        
+        # Validate state and get user_id
+        user_id = oauth_states.get(state)
+        if not user_id:
+            logger.error(f"Invalid state parameter: {state}")
+            return render_template_string(ERROR_TEMPLATE, error_message="Invalid or expired authorization request.")
+        
+        # Remove the state (one-time use)
+        del oauth_states[state]
+        
+        # Put the code in the queue for processing
+        oauth_callback_queue.put((user_id, code))
+        
+        logger.info(f"OAuth callback received for user {user_id}, code queued for processing")
+        return render_template_string(SUCCESS_TEMPLATE)
+        
+    except Exception as e:
+        logger.exception("Error in oauth_callback")
+        return render_template_string(ERROR_TEMPLATE, error_message="An unexpected error occurred during authentication.")
+
+@app.route('/')
+def root():
+    """Handle root route - check if this is a misrouted OAuth callback"""
+    try:
+        # Check if this looks like an OAuth callback that hit the wrong endpoint
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        
+        if code or state or error:
+            logger.info("OAuth callback received at root endpoint, redirecting to proper handler")
+            # This is likely an OAuth callback that hit the wrong endpoint
+            # Redirect to the proper callback endpoint with all parameters
+            return redirect(url_for('oauth_callback', **request.args))
+        
+        # Regular root access
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Leyla Cuisine Bot</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+                .container { max-width: 500px; margin: 0 auto; padding: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🍽️ Leyla Cuisine Bot</h1>
+                <p>This is the OAuth callback server for the Leyla Cuisine Telegram bot.</p>
+                <p>If you're seeing this page, the server is running correctly.</p>
+                <p>Please return to Telegram to interact with the bot.</p>
+            </div>
+        </body>
+        </html>
+        """)
+        
+    except Exception as e:
+        logger.exception("Error in root handler")
+        return "Server Error", 500
+
+def run_flask():
+    """Run Flask app in a separate thread"""
+    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+
+# Start Flask server in background thread
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
+logger.info("Flask server started on port 8080 for OAuth callbacks")
+
+# ==============================
+# OAuth Callback Queue Monitor
+# ==============================
+
+def monitor_oauth_queue():
+    """Monitor the OAuth callback queue and process authentication automatically"""
+    while True:
+        try:
+            # Wait for OAuth callback
+            user_id, code = oauth_callback_queue.get(timeout=1)
+            logger.info(f"Processing OAuth code for user {user_id}")
+            
+            try:
+                # Process the auth code
+                success, result_message = handle_oauth_callback(code)
+                
+                if success:
+                    bot.send_message(user_id, "✅ Google authentication completed successfully!")
+                    # Initialize Google services now that authentication is complete
+                    bot.send_message(user_id, "Initializing Google services...")
+                    if initialize_google_services():
+                        bot.send_message(user_id, "🎉 All Google services are now ready! You can use all bot features.")
+                    else:
+                        bot.send_message(user_id, "⚠️ Google services partially initialized. Some features may be limited.")
+                else:
+                    bot.send_message(user_id, f"❌ Authentication failed: {result_message}")
+                    
+            except Exception as e:
+                logger.exception(f"Error processing OAuth code for user {user_id}")
+                bot.send_message(user_id, f"❌ Authentication failed due to an error: {str(e)}")
+                
+        except queue.Empty:
+            continue
+        except Exception as e:
+            logger.exception("Error in OAuth queue monitor")
+
+# Start OAuth queue monitor in background thread
+oauth_monitor_thread = threading.Thread(target=monitor_oauth_queue, daemon=True)
+oauth_monitor_thread.start()
+logger.info("OAuth callback queue monitor started")
+
+# ==============================
 # Google Drive Handler Setup
 # ==============================
 
@@ -78,26 +264,53 @@ gdh = None
 DRIVE_IDS = None
 menu = {}
 menu_items_str = ""
-try:
-    import google_handlers.google_drive_handler as gdh
-    from google_handlers.google_drive_handler import append_contact
-    DRIVE_IDS = gdh.DRIVE
-    # Attempt to load menu from Google Drive
+
+def initialize_google_services():
+    """
+    Initialize Google Drive handler and load menu.
+    Only called after confirming authentication tokens exist.
+    """
+    global gdh, DRIVE_IDS, menu, menu_items_str
     try:
-        menu = gdh.load_menu()
-        menu_items_str = '", "'.join(menu.keys())
-        menu_items_str = f'"{menu_items_str}"'
-        logger.info("Menu loaded successfully from Google Drive.")
+        import google_handlers.google_drive_handler as gdh_module
+        gdh = gdh_module
+        DRIVE_IDS = gdh.DRIVE
+        # Attempt to load menu from Google Drive
+        try:
+            menu = gdh.load_menu()
+            menu_items_str = '", "'.join(menu.keys())
+            menu_items_str = f'"{menu_items_str}"'
+            logger.info("Menu loaded successfully from Google Drive.")
+            return True
+        except Exception as e:
+            logger.error(f"Could not load menu from Google Drive: {e}")
+            menu = {}
+            menu_items_str = ""
+            return False
     except Exception as e:
-        logger.error(f"Could not load menu from Google Drive: {e}")
+        logger.error(f"Could not import Google Drive handler: {e}")
+        gdh = None
+        DRIVE_IDS = None
         menu = {}
         menu_items_str = ""
-except Exception as e:
-    logger.error(f"Could not import Google Drive handler: {e}")
-    gdh = None
-    DRIVE_IDS = None
-    menu = {}
-    menu_items_str = ""
+        return False
+
+    # Check if Google services are already set up during startup
+    try:
+        from google_handlers.oauth_setup import check_google_setup
+        is_setup, setup_message = check_google_setup()
+        if is_setup:
+            logger.info("Google authentication detected. Initializing Google services...")
+            if initialize_google_services():
+                logger.info("Google services initialized successfully.")
+            else:
+                logger.warning("Google services partially initialized.")
+        else:
+            logger.info(f"Google services not initialized: {setup_message}")
+            logger.info("Bot will prompt users to authenticate when Google features are needed.")
+    except Exception as e:
+        logger.error(f"Error checking Google setup during startup: {e}")
+        logger.info("Bot will start without Google services. Users can authenticate later.")
 
 # ==============================
 # User State and Agent Setup
@@ -681,6 +894,12 @@ def handle_auth_code(message):
             is_setup, setup_message = check_google_setup()
             if is_setup:
                 bot.send_message(message.chat.id, "Google integration is now ready to use!")
+                # Initialize Google services now that authentication is complete
+                bot.send_message(message.chat.id, "Initializing Google services...")
+                if initialize_google_services():
+                    bot.send_message(message.chat.id, "✅ Google services initialized successfully! You can now use all features.")
+                else:
+                    bot.send_message(message.chat.id, "⚠️ Google services partially initialized. Some features may be limited.")
             else:
                 bot.send_message(message.chat.id, "There was an issue with the setup. Please try again.")
         else:
@@ -738,7 +957,34 @@ def process_message(message):
         if not message.text.startswith(('/setup_google', '/auth_code', '/check_google', '/Greet')):
             is_setup, setup_message = check_google_setup()
             if not is_setup:
-                bot.reply_to(message, setup_message)
+                # Proactively send authentication instructions and link
+                bot.reply_to(message, setup_message) # Tell them why
+                try:
+                    # Generate a secure state parameter
+                    state = secrets.token_urlsafe(32)
+                    oauth_states[state] = user_id
+                    
+                    # Generate OAuth URL with state
+                    auth_url = generate_oauth_url_with_state(state)
+                    instructions = (
+                        "To use this feature, Google integration is required. Please follow these steps:\n\n"
+                        "1. Click the link below to authorize the bot\n"
+                        "2. Sign in with your Google account\n"
+                        "3. Grant the requested permissions\n"
+                        "4. After authorization, you'll be automatically redirected\n"
+                        "5. The bot will notify you here when authentication is complete\n\n"
+                        f"🔗 Authorization link: {auth_url}\n\n"
+                        "⚠️ This link is unique to you and expires in 10 minutes for security."
+                    )
+                    bot.send_message(message.chat.id, instructions)
+                    logger.info(f"Sent proactive OAuth instructions with state to user {user_id}.")
+                    
+                    # Clean up expired states (older than 10 minutes)
+                    threading.Timer(600.0, lambda: oauth_states.pop(state, None)).start()
+                    
+                except Exception as e:
+                    logger.exception(f"Error generating OAuth URL for proactive auth for user {user_id}")
+                    bot.send_message(message.chat.id, "Sorry, I couldn't generate the authentication link. Please try running /setup_google manually.")
                 return
         
         # Initialize or retrieve user conversation history
@@ -886,7 +1132,3 @@ def handle_message(m):
 
 bot.polling()
 print("Bot is running...")
-
-# ==============================
-# End of File
-# ==============================
